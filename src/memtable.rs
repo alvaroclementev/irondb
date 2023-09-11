@@ -61,7 +61,7 @@ impl MemTable {
             Err(idx) => {
                 // TODO(alvaro): I am sure there's some built in way to use the
                 // REAL sizes of the fields in here, instead of hardcoding (considering
-                // alignment, padding, zero value optimization, etc.)
+                // alignment, padding, null pointer optimization, etc.)
 
                 // Increase the size of the MemTable by the Key size, the Value size, Timestamp
                 // size (16 bytes) and Tombstone size (1 byte)
@@ -112,8 +112,16 @@ impl MemTable {
         self.entries
             .binary_search_by_key(&key, |e| e.key.as_slice())
     }
+
+    /// Return the number of entries in the MemTable
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
 }
 
+/// TODO(alvaro): Explore if we can skip the `deleted` flag and instead use
+/// the fact that only Tombstones have a `None` in the value. Would this save
+/// disk space using null pointer optimization? Would it be faster?
 /// An entry in the MemTable
 pub struct MemTableEntry {
     pub key: Vec<u8>,
