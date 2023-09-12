@@ -1,5 +1,14 @@
 # Notes
 
+## Blog Missing Implementations
+
+The blog does not contain articles that explain how to implement the rest of 
+the pieces. RocksDB contains pretty good documentation to try and implement them
+ourselves.
+
+- [ ] SSTable
+- [ ] Top level DB API
+- [ ] Compaction
 
 ## Future Improvements
 
