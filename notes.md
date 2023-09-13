@@ -22,3 +22,5 @@ ourselves.
     - [ ] Use a different HashMap implementation for cases with multiple collisions
 - Efficiency and correctness
     - [ ] Change "data" representation from Vec<u8> to Arc<[u8]> (or Rc<[u8]>)
+    - [ ] Transactions
+        - [ ] Sequence numbers and MVCC

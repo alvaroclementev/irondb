@@ -10,8 +10,8 @@
 ///
 /// Entries are stored in a Vector instead of a HashMap to support Scans
 pub struct MemTable {
-    entries: Vec<MemTableEntry>,
-    size: usize,
+    pub entries: Vec<MemTableEntry>,
+    pub size: usize,
 }
 
 impl MemTable {

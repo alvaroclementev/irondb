@@ -20,15 +20,24 @@
 // does not have a post with the implementation of this component as of today
 // (2023-09-12)
 
-use std::{collections::HashMap, fs::File, io, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs::{File, OpenOptions},
+    io::{self, BufWriter, Write},
+    path::{Path, PathBuf},
+};
 
 use memmap2::Mmap;
 
+use crate::memtable::MemTable;
+
 const PREFIX_LENGTH: usize = 10;
+const SEQUENCE_ID: u64 = 42;
 
 /// Type of row this is
 ///
 /// Simplification of https://github.com/facebook/rocksdb/blob/8fc78a3a9e1d24ba55731b70c0c25cef0765dbc8/db/dbformat.h#L39
+#[derive(Copy, Clone)]
 #[repr(u8)]
 enum RowType {
     Deletion = 0,
@@ -43,6 +52,16 @@ impl From<u8> for RowType {
             1 => RowType::Value,
             2 => RowType::Merge,
             _ => panic!("invalid u8 value for RowType: {}", value),
+        }
+    }
+}
+
+impl From<RowType> for u8 {
+    fn from(val: RowType) -> Self {
+        match val {
+            RowType::Deletion => 0,
+            RowType::Value => 1,
+            RowType::Merge => 2,
         }
     }
 }
@@ -174,4 +193,78 @@ fn read_key_value(data: &[u8]) -> Option<KeyValueParts> {
     let (key, row_type, sequence_id, value_off) = read_key(data)?;
     let (value, next_key_off) = read_value(&data[value_off..])?;
     Some((key, row_type, sequence_id, value, next_key_off))
+}
+
+/// Write an SSTable to disk and return an SSTable reference that points to it
+///
+/// ### File Format
+/// #### Basic
+///     <beginning_of_file>
+///       [data row1]
+///       [data row1]
+///       [data row1]
+///       ...
+///       [data rowN]
+///       [Property Block]
+///       [Footer]                               (fixed size; starts at file_size - sizeof(Footer))
+///     <end_of_file>
+///
+/// A row has the following format
+///
+/// <beginning of a row>
+///     encoded key
+///     length of value: varint32
+///     value bytes
+/// <end of a row>
+///
+/// A key with the plain format (variable length) has the following structure:
+///
+/// [length of key: varint32] + user key + internal bytes
+///
+/// With internal bytes being
+///
+/// +----------- ...... -------------+----+---+---+---+---+---+---+---+
+/// |       user key                 |type|   sequence ID (7 bytes)   |
+/// +----------- ..... --------------+----+---+---+---+---+---+---+---+
+///
+fn write(memtable: MemTable, path: &Path) -> io::Result<PathBuf> {
+    let file = OpenOptions::new().write(true).open(path)?;
+
+    let mut bufwriter = BufWriter::new(file);
+
+    // Write the rows
+    for entry in memtable.entries.iter() {
+        // Write the key
+        let key_len = entry.key.len() as u32;
+        bufwriter.write_all(key_len.to_le_bytes().as_slice())?;
+        bufwriter.write_all(entry.key.as_slice())?;
+
+        let row_type = if entry.deleted {
+            RowType::Deletion
+        } else {
+            RowType::Value
+        };
+
+        // NOTE(alvaro): For now we don't use any sequence id
+        let sequence_number = SEQUENCE_ID;
+
+        // The sequence number uses only 56 bits
+        let seq_mask = !(0xFF << 24);
+        let internal_bytes = ((std::convert::Into::<u8>::into(row_type) as u64) << 24)
+            | (sequence_number & seq_mask);
+        bufwriter.write_all(internal_bytes.to_le_bytes().as_slice())?;
+
+        // Write the value
+        if let RowType::Deletion = row_type {
+            bufwriter.write_all(0u32.to_le_bytes().as_slice())?;
+        } else {
+            let value = entry.value.as_ref().unwrap();
+            let value_len = value.len() as u32;
+            bufwriter.write_all(value_len.to_le_bytes().as_slice())?;
+        }
+    }
+
+    // Write the property block
+    // Write the footer
+    todo!()
 }
